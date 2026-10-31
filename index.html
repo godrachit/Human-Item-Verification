@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Human & Item Verification</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0b1220; --panel:#121d30; --muted:#9eacc2; --line:#26364f; --green:#35c98b; --red:#ff6577; --blue:#6ca8ff; }
+    * { box-sizing:border-box }
+    body { margin:0; font-family:Arial,sans-serif; background:var(--bg); color:#edf3ff; }
+    header { padding:22px 5%; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; }
+    h1 { margin:0; font-size:clamp(20px,3vw,28px) } .sub { color:var(--muted); margin-top:6px; font-size:13px }
+    main { width:min(1200px,92%); margin:24px auto; }
+    .grid { display:grid; grid-template-columns: minmax(0,1.6fr) minmax(260px,1fr); gap:18px; }
+    .panel,.stat { background:var(--panel); border:1px solid var(--line); border-radius:15px; padding:17px; }
+    .panel h2 { margin:0 0 14px; font-size:17px; }
+    .video { width:100%; display:block; border-radius:10px; background:#05080e; min-height:220px; }
+    .stats { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .stat small { color:var(--muted); display:block; margin-bottom:9px; }
+    .value { font-size:24px; font-weight:700; }
+    .good { color:var(--green) } .bad { color:var(--red) } .blue { color:var(--blue) }
+    .overall { margin-top:12px; padding:15px; border-radius:11px; background:#1a2a40; font-weight:700; }
+    .muted { color:var(--muted); font-size:13px; line-height:1.5; }
+    .buttons { display:flex; gap:10px; flex-wrap:wrap; margin-top:15px; }
+    a.btn { text-decoration:none; color:white; background:#29476f; padding:10px 13px; border-radius:9px; font-size:13px; }
+    a.btn:hover { background:#38649c; }
+    .wide { margin-top:18px; }
+    .table-wrap { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th,td { padding:10px 8px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
+    th { color:var(--muted); font-weight:600; }
+    @media(max-width:800px) { .grid { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<header>
+  <div><h1>Human & Item Verification</h1><div class="sub">Laptop camera · Local AI detection · OR verification logic</div></div>
+  <div id="cameraState" class="muted">Camera: connecting…</div>
+</header>
+<main>
+  <div class="grid">
+    <section class="panel">
+      <h2><span class="blue">●</span> Live camera</h2>
+      <img class="video" src="/video_feed" alt="Live camera feed">
+      <div class="muted" style="margin-top:10px">Green boxes indicate people. Orange boxes indicate other supported objects.</div>
+    </section>
+    <section class="panel">
+      <h2>Verification results</h2>
+      <div class="stats">
+        <div class="stat"><small>Human detection</small><div id="human" class="value">—</div><div id="humanCount" class="muted">0 people</div></div>
+        <div class="stat"><small>Item detection</small><div id="item" class="value">—</div><div id="itemCount" class="muted">0 objects</div></div>
+      </div>
+      <div class="overall" id="overall">WAITING</div>
+      <p class="muted" id="message">Starting detector…</p>
+      <p class="muted"><b>Detected items:</b> <span id="items">None</span></p>
+      <p class="muted"><b>Last update:</b> <span id="updated">—</span></p>
+      <div class="buttons">
+        <a class="btn" href="/export/csv">Download CSV</a>
+        <a class="btn" href="/export/excel">Download Excel</a>
+      </div>
+    </section>
+  </div>
+  <section class="panel wide">
+    <h2>Recent verification history</h2>
+    <div class="table-wrap">
+      <table><thead><tr><th>Time</th><th>Human</th><th>Items</th><th>Overall</th><th>Details</th></tr></thead>
+      <tbody id="events"><tr><td colspan="5" class="muted">No events yet.</td></tr></tbody></table>
+    </div>
+  </section>
+  <p class="muted">Privacy: this starter project processes video locally and does not save video or face images. Logs store detection labels and timestamps only.</p>
+</main>
+<script>
+const el = id => document.getElementById(id);
+function setFlag(id, yes) {
+  el(id).textContent = yes ? "DETECTED" : "NOT DETECTED";
+  el(id).className = "value " + (yes ? "good" : "bad");
+}
+async function refresh() {
+  try {
+    const r = await fetch('/api/status'); const s = await r.json();
+    el('cameraState').textContent = 'Camera: ' + s.camera;
+    setFlag('human', !!s.human_detected); setFlag('item', !!s.item_detected);
+    el('humanCount').textContent = (s.human_count || 0) + ' people';
+    el('itemCount').textContent = (s.item_count || 0) + ' detections';
+    el('overall').textContent = s.overall || 'WAITING';
+    el('overall').style.color = s.overall === 'VERIFIED' ? 'var(--green)' : (s.overall === 'ERROR' ? 'var(--red)' : 'white');
+    el('message').textContent = s.message || '';
+    el('items').textContent = (s.items && s.items.length) ? s.items.join(', ') : 'None';
+    el('updated').textContent = s.updated_at || '—';
+  } catch(e) { el('cameraState').textContent = 'Dashboard connection error'; }
+}
+async function refreshEvents() {
+  try {
+    const r = await fetch('/api/events'); const rows = await r.json();
+    el('events').innerHTML = rows.length ? rows.map(x =>
+      `<tr><td>${x.timestamp}</td><td>${x.human_detected ? 'Yes ('+x.human_count+')' : 'No'}</td><td>${x.items || 'None'}</td><td>${x.overall}</td><td>${x.message}</td></tr>`
+    ).join('') : '<tr><td colspan="5" class="muted">No events yet.</td></tr>';
+  } catch(e) {}
+}
+refresh(); refreshEvents(); setInterval(refresh, 1000); setInterval(refreshEvents, 5000);
+</script>
+</body>
+</html>
